@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:api-gateway="http://www.mulesoft.org/schema/mule/api-gateway" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/api-gateway http://www.mulesoft.org/schema/mule/api-gateway/current/mule-api-gateway.xsd">
+	<db:config name="Database_Config" doc:name="Database Config" doc:id="b5f0c270-e912-4664-8103-84af6b513377" >
+		<db:my-sql-connection host="sql3.freesqldatabase.com" port="3306" user="sql3498767" password="8rPQrhvMVQ" database="sql3498767"/>
+	</db:config>
+	<api-gateway:autodiscovery apiId="17897762" ignoreBasePath="true" doc:name="API Autodiscovery" doc:id="ee0247b1-f82b-4939-8215-5afb9e6538ef" flowRef="order-mgmt-api-main" />
+	<flow name="getOrderByID" doc:id="5853c007-5dfa-4e14-81f2-a817ec5aee51" >
+		<http:listener doc:name="GET  /orders" doc:id="4ec21321-83cd-45e0-ae35-fa4d26f05272" config-ref="order-mgmt-api-httpListenerConfig" path="/orders" allowedMethods="GET"/>
+		<set-variable value="#[message.attributes.queryParams.userId]" doc:name="userId" doc:id="ea83f2d2-fb6a-4c96-8b36-2bb29c82aaa3" variableName="userId"/>
+		<db:select doc:name="Select" doc:id="2548d8e2-8bb9-4626-8e9b-754999adce10" config-ref="Database_Config">
+			<db:sql ><![CDATA[SELECT orders.UUID, orders.user_id, orders.creation_date,order_detail.product_id, order_detail.quantity from orders, order_detail where orders.user_id = :userId and orders.UUID = order_detail.UUID]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{'userId' : vars.userId}]]]></db:input-parameters>
+		</db:select>
+		<ee:transform doc:name="Transform Message" doc:id="a9c87ca4-4106-4d4e-a29b-57afefb6a4dd" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="postOrder" doc:id="11654195-b597-4156-829a-8e333e9ba7b2" >
+		<http:listener doc:name="POST /orders" doc:id="330d9647-9f9f-4f95-afff-7e67ba714c49" config-ref="order-mgmt-api-httpListenerConfig" path="/orders" allowedMethods="POST"/>
+		<set-variable value="#[payload.userid]" doc:name="userid" doc:id="4e3eb574-66c3-4d2a-8162-90dd1ac6463a" variableName="userid"/>
+		<set-variable value="#[payload.items]" doc:name="items" doc:id="d60c255e-b842-48f6-b67b-95c1d7a6402f" variableName="items"/>
+		<set-variable value="#[uuid()]" doc:name="UUID" doc:id="93d2482a-1416-49d7-bb34-51d41c1e4c21" variableName="UUID"/>
+		<logger level="INFO" doc:name="Logger" doc:id="bc1c5cd2-12c7-492f-b5b9-1025af8f093d" message="#[vars.UUID]"/>
+		<db:insert doc:name="Insert New Order" doc:id="63e2b730-70f9-4893-a688-05c8d5ba80df" config-ref="Database_Config">
+			<db:sql ><![CDATA[INSERT INTO sql3498767.orders (UUID, user_id) VALUES (:uuid, :userid);]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{ 'uuid' : vars.UUID,  'userid' : vars.userid}]]]></db:input-parameters>
+		</db:insert>
+		<foreach doc:name="For Each Product In Order" doc:id="70723281-d973-499f-a9b3-e4a7a4400b44" collection="#[vars.items]">
+			<set-variable value="#[payload.product_id]" doc:name="product_id" doc:id="dcf56634-04b2-4ebd-8f70-b86329661e47" variableName="product_id" />
+			<set-variable value="#[payload.quantity]" doc:name="quantity" doc:id="6289230d-5d3b-42cb-a853-b9847ede50b4" variableName="quantity" />
+			<db:insert doc:name="Insert Product" doc:id="5771cde1-f43d-4868-bae5-3f9c49a18464" config-ref="Database_Config">
+				<db:sql><![CDATA[INSERT INTO sql3498767.order_detail (UUID, product_id, quantity) VALUES (:uuid, :product_id, :quantity);]]></db:sql>
+				<db:input-parameters><![CDATA[#[{ 'uuid' : vars.UUID,  'product_id' : vars.product_id, 'quantity' : vars.quantity}]]]></db:input-parameters>
+			</db:insert>
+			<logger level="INFO" doc:name="Logger" doc:id="5d7b7fee-8236-4da0-9d9b-4ce9fd129e8d" message="#[vars.product_id ++ ' ' ++ vars.quantity]" />
+		</foreach>
+	</flow>
+</mule>
